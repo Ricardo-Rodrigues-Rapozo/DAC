@@ -6,14 +6,15 @@ import functions
 
 # Parâmetros da senoide
 A = 1        # Amplitude
-f = 50        # Frequência (Hz)
-Fs = 300     # Frequência de amostragem (Hz)
+f = 800        # Frequência (Hz)
+Fs = 40000    # Frequência de amostragem (Hz)
 phi = 0      # Fase (radianos)
 BUFFER_SIZE = 100
-FS = 10000
+#FS = 10000
 valor_inteiro = 1
 data = []
-
+n = Fs/f ## n amostras por ciclo 
+print(n)
 
 vect = np.zeros(BUFFER_SIZE, dtype=np.uint16)
 # Gera a senoide
