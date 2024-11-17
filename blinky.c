@@ -20,7 +20,8 @@
 #include "math.h"
 
 
-#define VECTOR_SIZE 200
+
+#define VECTOR_SIZE 100
 
 // Configuração da Tabela de controle do uDMA
 #if defined(ewarm)
@@ -35,16 +36,25 @@ uint8_t pui8ControlTable[1024] _attribute_ ((aligned(1024)));
 
 uint32_t control1 = 0;
 uint32_t ui32SysClkFreq;
-uint32_t i;
+uint32_t idx = 0;
 uint32_t buffer[VECTOR_SIZE];
 float dataVector[VECTOR_SIZE];
 uint32_t FS = 40000;
 uint32_t ui32PWMClockRate;
-uint32_t freq_port = 1000;
-uint32_t duty_cycle = 10;
+uint32_t freq_port = 10000;
+uint32_t duty_cycle = 0 ;
 uint32_t ui32ADC0Value[1];
+volatile uint32_t flag = 0;
 
+void Timer0IntHandler(void)
+{
+// Clear the timer interrupt
+TimerIntClear(TIMER0_BASE, TIMER_TIMA_TIMEOUT);
+// Read the current state of the GPIO pin and
+// write back the opposite state
+flag = 1;
 
+}
 
 void ConfigureUART(void)
 {
@@ -62,8 +72,6 @@ void ConfigureUART(void)
 
     UARTEnable(UART0_BASE);
 
-    //Habilitar interrupção
-//    IntEnable(UART0_BASE);
 }
 
 void ConfigureUDMA(void)
@@ -182,18 +190,21 @@ void setPWM(float* vector, uint32_t size)
     if (ADCIntStatus(ADC0_BASE, 1, false))
     {
         // Exemplo de processamento: imprimir os valores (ou qualquer outra operação)
-        for ( i = 0; i < size; i++)
+        if(flag == 1)
         {
-            control1 = 2;
+            //control1 = 2;
             ADCIntClear(ADC0_BASE, 1);
             ADCSequenceDataGet(ADC0_BASE, 1, ui32ADC0Value);
-            buffer[i] =  ui32ADC0Value[0];  // Mantém apenas os 16 bits menos significativos
-            duty_cycle = dataVector[i]/100;
+            buffer[idx] =  ui32ADC0Value[0];  // Mantém apenas os 16 bits menos significativos
+            //duty_cycle = dataVector[idx];
             // Converter o valor do ciclo de trabalho para a largura de pulso do PWM
-            uint32_t pulse_width = (uint32_t)(round(duty_cycle* ui32PWMClockRate ));
+            uint32_t pulse_width = (round((dataVector[idx] - 0.75)/200  * ui32PWMClockRate ));
             PWMPulseWidthSet(PWM0_BASE, PWM_OUT_2, pulse_width);
+            idx = (idx + 1)% VECTOR_SIZE;// idx = (idx+1)%VECTOR_SIZE
+            flag = 0;
         }
-    }
+    }//    ui32PWMClockRate = ui32SysClkFreq / freq_port;
+
 }
 
 
@@ -201,18 +212,25 @@ void setPWM(float* vector, uint32_t size)
 
 void ConfigureADC(void)
 {
+    // ------------------ Timer ---------------------------------------------------------
 
     SysCtlPeripheralEnable(SYSCTL_PERIPH_TIMER0);
     while(!SysCtlPeripheralReady(SYSCTL_PERIPH_TIMER0));
-
     TimerConfigure(TIMER0_BASE, TIMER_CFG_PERIODIC);
 
     TimerLoadSet(TIMER0_BASE, TIMER_A, ui32SysClkFreq / FS - 1);
 
     TimerControlTrigger(TIMER0_BASE, TIMER_A, true);
 
+
+
+    IntEnable(INT_TIMER0A);
+    TimerIntEnable(TIMER0_BASE, TIMER_TIMA_TIMEOUT);
+    IntMasterEnable();
+
     TimerEnable(TIMER0_BASE, TIMER_A);
 
+    // ------------------------- ADC ---------------------------------------
     SysCtlPeripheralEnable(SYSCTL_PERIPH_ADC0);
     while(!SysCtlPeripheralReady(SYSCTL_PERIPH_ADC0));
 
