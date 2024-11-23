@@ -19,9 +19,10 @@
 #include "driverlib/debug.h"
 #include "math.h"
 
-#define VECTOR_SIZE 125 // Tamanho do vetor de dados
+#define VECTOR_SIZE 99 // Tamanho do vetor de dados
 #define ADC_BUFFER_SIZE 4000
-#define FS 20000        // Taxa de amostragem em Hz
+#define FS 80000        // Taxa de amostragem em Hz
+
 
 // Tabela de controle do uDMA (necessária para operações de transferência de dados)
 #if defined(ewarm)
@@ -34,12 +35,13 @@ uint8_t pui8ControlTable[1024];
 uint8_t pui8ControlTable[1024] __attribute__((aligned(1024)));
 #endif
 
+
+// resolução tamanho do buffer /load  ---> = 100/ 750
 // Variáveis globais
 uint32_t ui32SysClkFreq; // Frequência do clock do sistema
 uint32_t ui32PWMClockRate; // Frequência do clock do PWM
-uint32_t freq_port = 50000; // Frequência da portadora PWM
+uint32_t freq_port = 2000; // Frequência da portadora PWM
 float duty_cycle = 0;       // Ciclo de trabalho do PWM
-uint32_t ui32ADC0Value[1];  // Valor lido pelo ADC
 volatile uint32_t flag = 0; // Flag de interrupção do Timer
 uint32_t idx = 0;           // Índice do vetor
 uint32_t idx_adc = 0;
@@ -52,7 +54,7 @@ void Timer0IntHandler(void) {
 
     // Calcula o pulso com base no ciclo de trabalho
     float duty_cycle = dataVector[idx];
-    uint32_t pulse_width = (uint32_t)(duty_cycle * load);
+    uint32_t pulse_width = (duty_cycle * load);
 
     // Define a largura do pulso do PWM
     PWMPulseWidthSet(PWM0_BASE, PWM_OUT_2, pulse_width);
@@ -60,7 +62,6 @@ void Timer0IntHandler(void) {
     // Incrementa o índice, garantindo que ele permaneça dentro do tamanho do vetor
     idx = (idx + 1) % VECTOR_SIZE;
 
-    flag = 1; // Sinaliza a interrupção
 }
 
 // Configura UART para comunicação serial
@@ -116,21 +117,6 @@ void UART0_ReceiveFloatVector(float* vector, uint32_t size) {
     while (uDMAChannelIsEnabled(UDMA_CHANNEL_UART0RX));
 }
 
-// Função para atualizar o PWM com base no vetor de dados
-//void setPWM(float* vector, uint32_t size) {
-//    if (flag == 1) {
-//        // Obtém o valor normalizado do vetor
-//        float duty_cycle = vector[idx];
-//        // Calcula o pulso com base no ciclo de trabalho
-//        uint32_t pulse_width = (uint32_t)(duty_cycle * load);
-//        // Define a largura do pulso do PWM
-//        PWMPulseWidthSet(PWM0_BASE, PWM_OUT_2, pulse_width);
-//        // Incrementa o índice, garantindo que ele permaneça dentro do tamanho do vetor
-//        idx = (idx + 1) % size;
-//        // Reseta a flag
-//        flag = 0;
-//    }
-//}
 
 // Inicializa o módulo PWM
 void InitPWM(void) {
@@ -143,16 +129,15 @@ void InitPWM(void) {
     GPIOPinConfigure(GPIO_PF2_M0PWM2);
     GPIOPinTypePWM(GPIO_PORTF_BASE, GPIO_PIN_2);
 
-    PWMClockSet(PWM0_BASE, PWM_SYSCLK_DIV_8);
-    ui32PWMClockRate = ui32SysClkFreq / 8;
+    PWMClockSet(PWM0_BASE, ui32SysClkFreq);
 
     PWMGenConfigure(PWM0_BASE, PWM_GEN_1, PWM_GEN_MODE_UP_DOWN | PWM_GEN_MODE_NO_SYNC);
 
-    uint32_t ui32Load = (ui32PWMClockRate / freq_port) - 1;
+    uint32_t ui32Load = (ui32SysClkFreq / (2*freq_port));
     PWMGenPeriodSet(PWM0_BASE, PWM_GEN_1, ui32Load);
 
     uint32_t duty_cycle = 25; // 25%
-    uint32_t pulse_width = (duty_cycle * (ui32Load + 1)) / 100;
+    uint32_t pulse_width = 0.25*ui32Load;
     PWMPulseWidthSet(PWM0_BASE, PWM_OUT_2, pulse_width);
 
     PWMOutputState(PWM0_BASE, PWM_OUT_2_BIT, true);
@@ -163,7 +148,7 @@ void InitPWM(void) {
 void ConfigureTimer(void) {
     // Habilita o periférico TIMER0
     SysCtlPeripheralEnable(SYSCTL_PERIPH_TIMER0);
-    while (!SysCtlPeripheralReady(SYSCTL_PERIPH_TIMER0));
+    while (!SysCtlPeripheralReady(SYSCTL_PERIPH_TIMER0)){}
 
     // Desabilita o timer antes de configurar
     TimerDisable(TIMER0_BASE, TIMER_A);
@@ -187,30 +172,14 @@ void ConfigureTimer(void) {
     // Inicia o timer
     TimerEnable(TIMER0_BASE, TIMER_A);
 }
-//
-//// Atualiza PWM com base no vetor de dados
-//void setPWM(float* vector, uint32_t size) {
-//    if (flag == 1) {
-//        //ADCIntClear(ADC0_BASE, 1);
-//        //ADCSequenceDataGet(ADC0_BASE, 1, ui32ADC0Value);
-//        //buffer[idx_adc] = ui32ADC0Value[0];
-//        duty_cycle = vector[idx] ;
-//
-//        uint32_t pulse_width = round(duty_cycle *
-//                             (load));
-//        PWMPulseWidthSet(PWM0_BASE, PWM_OUT_2, pulse_width);
-//        idx = (idx + 1) % VECTOR_SIZE;
-//
-//        flag = 0;
-//    }
-//}
+
 
 int main(void) {
     ui32SysClkFreq = SysCtlClockFreqSet((SYSCTL_XTAL_25MHZ |
                                          SYSCTL_OSC_MAIN | SYSCTL_USE_PLL |
                                          SYSCTL_CFG_VCO_480), 120000000);
-    load = ui32SysClkFreq / freq_port;
 
+    load = ui32SysClkFreq / (2*freq_port);
 
     ConfigureUART();
     ConfigureUDMA();
@@ -219,14 +188,5 @@ int main(void) {
 
     while (1) {
         UART0_ReceiveFloatVector(dataVector, VECTOR_SIZE);
-        //setPWM(dataVector, VECTOR_SIZE);
-//        if (time_start >= time_end) {
-//               time_diff = time_start - time_end;
-//           } else {
-//               // Caso o contador atinja o valor máximo e volte para zero
-//               time_diff = (time_end - time_start)/SysCtlClockGet();
-//           }
-
-
     }
 }
