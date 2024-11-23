@@ -15,16 +15,18 @@ def senoide(A,f,Fs,phi,num_samples):
     num_samples(int): numero de amostras do vetor 
     """
     t = np.arange(0, num_samples) / Fs
-    y = A * np.sin(2 * np.pi * f * t + phi) + 1.75  # Ajusta para valores não negativos
+    y = (A * np.sin(2 * np.pi * f * t + phi) + 1.5)/3.3  # Ajusta para valores não negativos
     return y, t
 
 
 #Função para enviar sinal contínuo para o microcontrolador
 def send_sync_signal(ser,buffer,Size_buffer):
     # Supondo que y_uint16 seja o seu vetor de valores
+    load = 750
+    buffer = (buffer - buffer.min()) / (buffer.max() - buffer.min())
     for value in buffer:
- 
-        ser.write(np.float32(value*100).tobytes())
-    print("fim")
+        print(value)
+        ser.write(np.float32(value).tobytes())
+    #print("fim")
     #time.sleep(0.1)  # Espera 1 segundo antes de enviar o próximo sinal
 
